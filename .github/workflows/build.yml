@@ -19,11 +19,13 @@ jobs:
           flutter-version: '3.24.5'
       - name: Generate Native Host Projects
         run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
-      - name: Inject iOS Camera Permission
+      - name: Inject iOS Permissions
         run: |
           PLIST=ios/Runner/Info.plist
-          DESC="Argeym uses the rear camera to render the live augmented-reality battlefield and align targets in real time."
-          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription $DESC" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $DESC" "$PLIST"
+          CAM="Argeym uses the rear camera to render the live augmented-reality battlefield and align targets in real time."
+          LOC="Argeym uses your location to measure the real-world distance and bearing to your opponent for hit detection."
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription $CAM" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $CAM" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription $LOC" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string $LOC" "$PLIST"
       - name: Resolve Dependencies
         run: flutter pub get
       - name: Build iOS
@@ -58,11 +60,14 @@ jobs:
           flutter-version: '3.24.5'
       - name: Generate Native Host Projects
         run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
-      - name: Inject Android Camera Permission
+      - name: Inject Android Permissions
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
             sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <application#' "$MANIFEST"
+          fi
+          if ! grep -q "android.permission.ACCESS_FINE_LOCATION" "$MANIFEST"; then
+            sed -i 's#<application#<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>\n    <application#' "$MANIFEST"
           fi
       - name: Patch Plugin compileSdk
         run: |
