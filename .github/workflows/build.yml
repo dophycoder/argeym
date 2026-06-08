@@ -12,13 +12,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           flutter-version: '3.24.5'
+
       - name: Generate Native Host Projects
         run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
+
       - name: Inject iOS Permissions
         run: |
           PLIST=ios/Runner/Info.plist
@@ -26,16 +29,19 @@ jobs:
           LOC="Argeym uses your location to measure the real-world distance and bearing to your opponent for hit detection."
           /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription $CAM" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $CAM" "$PLIST"
           /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription $LOC" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string $LOC" "$PLIST"
+
       - name: Resolve Dependencies
         run: flutter pub get
+
       - name: Build iOS
         run: flutter build ios --release --no-codesign
+
       - name: Package Unsigned IPA
         run: |
           mkdir -p build/ipa/Payload
           cp -r build/ios/iphoneos/Runner.app build/ipa/Payload/Runner.app
-          cd build/ipa
-          zip -r -q app-release.ipa Payload
+          cd build/ipa && zip -r -q app-release.ipa Payload
+
       - name: Upload iOS Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -48,18 +54,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           flutter-version: '3.24.5'
+
       - name: Generate Native Host Projects
         run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
+
       - name: Inject Android Permissions
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
@@ -69,28 +79,37 @@ jobs:
           if ! grep -q "android.permission.ACCESS_FINE_LOCATION" "$MANIFEST"; then
             sed -i 's#<application#<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>\n    <application#' "$MANIFEST"
           fi
-      - name: Patch Plugin compileSdk
+
+      # ---------------------------------------------------------------
+      # FIX: geolocator_android (and some other plugins) reference
+      # `flutter.compileSdkVersion` which is only available inside the
+      # Flutter plugin build-script scope, not in a root subprojects {}
+      # block.  The reliable fix is to set compileSdkVersion explicitly
+      # in every plugin's android {} block via a Gradle init script
+      # that is injected into GRADLE_USER_HOME before the build runs.
+      # ---------------------------------------------------------------
+      - name: Inject Gradle init script to fix plugin compileSdk
         run: |
-          if [ -f android/build.gradle.kts ]; then
-            printf 'subprojects {\n    afterEvaluate {\n        extensions.findByName("android")?.let { (it as com.android.build.gradle.BaseExtension).compileSdkVersion(34) }\n    }\n}\n\n' | cat - android/build.gradle.kts > android/build.gradle.kts.tmp && mv android/build.gradle.kts.tmp android/build.gradle.kts
-          fi
-          if [ -f android/build.gradle ]; then
-            printf 'subprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty("android")) {\n            project.android { compileSdkVersion 34 }\n        }\n    }\n}\n\n' | cat - android/build.gradle > android/build.gradle.tmp && mv android/build.gradle.tmp android/build.gradle
-          fi
+          mkdir -p "$HOME/.gradle/init.d"
+          cat > "$HOME/.gradle/init.d/fix_compile_sdk.gradle" << 'GRADLE_EOF'
+          allprojects {
+            afterEvaluate { project ->
+              // Only touch Android library sub-projects (plugins)
+              if (project.plugins.hasPlugin('com.android.library')) {
+                project.android {
+                  compileSdkVersion 34
+                }
+              }
+            }
+          }
+          GRADLE_EOF
+
       - name: Resolve Dependencies
         run: flutter pub get
-      - name: Patch Plugins Referencing Flutter Gradle Extension
-        run: |
-          PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
-          find "$PUB_CACHE_DIR" -path '*/android/build.gradle' -print0 | while IFS= read -r -d '' f; do
-            sed -i \
-              -e 's/flutter\.compileSdkVersion/34/g' \
-              -e 's/flutter\.minSdkVersion/21/g' \
-              -e 's/flutter\.targetSdkVersion/34/g' \
-              "$f"
-          done
+
       - name: Build APK
         run: flutter build apk --release
+
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
