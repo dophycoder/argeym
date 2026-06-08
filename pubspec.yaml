@@ -1,0 +1,24 @@
+name: argeym
+description: Cross-platform AR shooter built on Flutter and a Node.js VPS.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  socket_io_client: ^2.0.3+1
+  camera: ^0.10.5+9
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^3.5.6
+  sensors_plus: ^4.0.2
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
