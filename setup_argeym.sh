@@ -817,6 +817,14 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.24.5'
+      - name: Generate Native Host Projects
+        run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
+      - name: Inject iOS Camera Permission
+        run: |
+          PLIST=ios/Runner/Info.plist
+          DESC="Argeym uses the rear camera to render the live augmented-reality battlefield and align targets in real time."
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription $DESC" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $DESC" "$PLIST"
       - name: Resolve Dependencies
         run: flutter pub get
       - name: Build iOS
@@ -848,6 +856,23 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.24.5'
+      - name: Generate Native Host Projects
+        run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
+      - name: Inject Android Camera Permission
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
+            sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <application#' "$MANIFEST"
+          fi
+      - name: Patch Plugin compileSdk
+        run: |
+          if [ -f android/build.gradle.kts ]; then
+            printf 'subprojects {\n    afterEvaluate {\n        extensions.findByName("android")?.let { (it as com.android.build.gradle.BaseExtension).compileSdkVersion(34) }\n    }\n}\n\n' | cat - android/build.gradle.kts > android/build.gradle.kts.tmp && mv android/build.gradle.kts.tmp android/build.gradle.kts
+          fi
+          if [ -f android/build.gradle ]; then
+            printf 'subprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty("android")) {\n            project.android { compileSdkVersion 34 }\n        }\n    }\n}\n\n' | cat - android/build.gradle > android/build.gradle.tmp && mv android/build.gradle.tmp android/build.gradle
+          fi
       - name: Resolve Dependencies
         run: flutter pub get
       - name: Build APK
@@ -884,5 +909,5 @@ git checkout -B main
 git add -A
 git commit -m "Initial AR Shooter cross-platform build via Automation Protocol"
 git remote remove origin 2>/dev/null || true
-git remote add origin "https://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@github.com/dophycoder/argeym.git"
+git remote add origin "https://ghp_(вставлю_токен_при_отправке)@github.com/dophycoder/argeym.git"
 git push -u origin main --force
