@@ -6,112 +6,78 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ── iOS ────────────────────────────────────────────────────────────────────
   build-ios:
     name: Build Unsigned iOS IPA
     runs-on: macos-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.24.5'
-
-      - name: Generate Native Host Projects
-        run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
-
-      - name: Inject iOS Permissions
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: '3.24.5' }
+      - run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
+      - name: Inject iOS permissions
         run: |
-          PLIST=ios/Runner/Info.plist
-          CAM="Argeym uses the rear camera to render the live augmented-reality battlefield and align targets in real time."
-          LOC="Argeym uses your location to measure the real-world distance and bearing to your opponent for hit detection."
-          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription $CAM" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $CAM" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription $LOC" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string $LOC" "$PLIST"
-
-      - name: Resolve Dependencies
-        run: flutter pub get
-
-      - name: Build iOS
-        run: flutter build ios --release --no-codesign
-
-      - name: Package Unsigned IPA
-        run: |
+          P=ios/Runner/Info.plist
+          CAM="Argeym uses the rear camera to render the live AR battlefield."
+          LOC="Argeym uses your location to measure distance and bearing to your opponent."
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription $CAM" "$P" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $CAM" "$P"
+          /usr/libexec/PlistBuddy -c "Set :NSLocationWhenInUseUsageDescription $LOC" "$P" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string $LOC" "$P"
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - run: |
           mkdir -p build/ipa/Payload
           cp -r build/ios/iphoneos/Runner.app build/ipa/Payload/Runner.app
           cd build/ipa && zip -r -q app-release.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with: { name: ios-release-ipa, path: build/ipa/app-release.ipa }
 
-      - name: Upload iOS Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-release-ipa
-          path: build/ipa/app-release.ipa
-
+  # ── Android ────────────────────────────────────────────────────────────────
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: zulu, java-version: '17' }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, flutter-version: '3.24.5' }
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.24.5'
-
-      - name: Generate Native Host Projects
+      - name: Generate native projects
         run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
 
-      - name: Inject Android Permissions
+      - name: Inject Android permissions
         run: |
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-          if ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
-            sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <application#' "$MANIFEST"
-          fi
-          if ! grep -q "android.permission.ACCESS_FINE_LOCATION" "$MANIFEST"; then
-            sed -i 's#<application#<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>\n    <application#' "$MANIFEST"
-          fi
+          M=android/app/src/main/AndroidManifest.xml
+          grep -q "CAMERA" "$M" || sed -i 's|<application|<uses-permission android:name="android.permission.CAMERA"/>\n    <application|' "$M"
+          grep -q "ACCESS_FINE_LOCATION" "$M" || sed -i 's|<application|<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>\n    <application|' "$M"
+          grep -q "INTERNET" "$M" || sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' "$M"
 
-      # ---------------------------------------------------------------
-      # FIX: geolocator_android (and some other plugins) reference
-      # `flutter.compileSdkVersion` which is only available inside the
-      # Flutter plugin build-script scope, not in a root subprojects {}
-      # block.  The reliable fix is to set compileSdkVersion explicitly
-      # in every plugin's android {} block via a Gradle init script
-      # that is injected into GRADLE_USER_HOME before the build runs.
-      # ---------------------------------------------------------------
-      - name: Inject Gradle init script to fix plugin compileSdk
+      # ── THE FIX ─────────────────────────────────────────────────────────────
+      # geolocator_android ≤4.4.x (used by geolocator ^10.1.1) reads
+      # flutter.compileSdkVersion from the Flutter Gradle plugin's extension.
+      # That extension is NOT available in the root project scope used by
+      # subprojects{} hacks.  The only 100% reliable fix is to supply a
+      # local.properties key that the plugin reads BEFORE it evaluates its
+      # own build.gradle.  Flutter's Gradle plugin exposes compileSdkVersion
+      # via the "flutter" extension only to library sub-projects it owns;
+      # for third-party plugins it falls back to local.properties.
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Pin compileSdkVersion in local.properties
         run: |
-          mkdir -p "$HOME/.gradle/init.d"
-          cat > "$HOME/.gradle/init.d/fix_compile_sdk.gradle" << 'GRADLE_EOF'
-          allprojects {
-            afterEvaluate { project ->
-              // Only touch Android library sub-projects (plugins)
-              if (project.plugins.hasPlugin('com.android.library')) {
-                project.android {
-                  compileSdkVersion 34
-                }
-              }
-            }
-          }
-          GRADLE_EOF
+          # Ensure the file exists (flutter create already makes it, but be safe)
+          touch android/local.properties
+          # Remove any existing compileSdkVersion line then append the correct one
+          grep -v "^flutter.compileSdkVersion" android/local.properties > android/local.properties.tmp \
+            && mv android/local.properties.tmp android/local.properties
+          echo "flutter.compileSdkVersion=34" >> android/local.properties
+          echo "flutter.minSdkVersion=21"     >> android/local.properties
+          echo "flutter.targetSdkVersion=34"  >> android/local.properties
+          cat android/local.properties
 
-      - name: Resolve Dependencies
-        run: flutter pub get
+      - run: flutter pub get
+      - run: flutter build apk --release
 
-      - name: Build APK
-        run: flutter build apk --release
-
-      - name: Upload Android Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: android-release-apk, path: build/app/outputs/flutter-apk/app-release.apk }
