@@ -64,11 +64,11 @@ jobs:
           fi
       - name: Patch Plugin compileSdk
         run: |
-          if [ -f android/build.gradle ]; then
-            printf '\nsubprojects {\n    afterEvaluate { project ->\n        if (project.hasProperty("android")) {\n            project.android { compileSdkVersion 34 }\n        }\n    }\n}\n' >> android/build.gradle
-          fi
           if [ -f android/build.gradle.kts ]; then
-            printf '\nsubprojects {\n    afterEvaluate {\n        extensions.findByName("android")?.let { (it as com.android.build.gradle.BaseExtension).compileSdkVersion(34) }\n    }\n}\n' >> android/build.gradle.kts
+            printf 'subprojects {\n    pluginManager.withPlugin("com.android.library") {\n        (extensions.getByName("android") as com.android.build.gradle.BaseExtension).compileSdkVersion(34)\n    }\n    pluginManager.withPlugin("com.android.application") {\n        (extensions.getByName("android") as com.android.build.gradle.BaseExtension).compileSdkVersion(34)\n    }\n}\n\n' | cat - android/build.gradle.kts > android/build.gradle.kts.tmp && mv android/build.gradle.kts.tmp android/build.gradle.kts
+          fi
+          if [ -f android/build.gradle ]; then
+            printf 'subprojects {\n    pluginManager.withPlugin("com.android.library") {\n        android { compileSdkVersion 34 }\n    }\n    pluginManager.withPlugin("com.android.application") {\n        android { compileSdkVersion 34 }\n    }\n}\n\n' | cat - android/build.gradle > android/build.gradle.tmp && mv android/build.gradle.tmp android/build.gradle
           fi
       - name: Resolve Dependencies
         run: flutter pub get
