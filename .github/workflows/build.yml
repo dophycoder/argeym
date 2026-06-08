@@ -16,6 +16,13 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Generate Native Host Projects
+        run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
+      - name: Inject iOS Camera Permission
+        run: |
+          PLIST=ios/Runner/Info.plist
+          DESC="Argeym uses the rear camera to render the live augmented-reality battlefield and align targets in real time."
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription $DESC" "$PLIST" || /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string $DESC" "$PLIST"
       - name: Resolve Dependencies
         run: flutter pub get
       - name: Build iOS
@@ -47,6 +54,14 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Generate Native Host Projects
+        run: flutter create --org com.argeym --project-name argeym --platforms=ios,android .
+      - name: Inject Android Camera Permission
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
+            sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <application#' "$MANIFEST"
+          fi
       - name: Resolve Dependencies
         run: flutter pub get
       - name: Build APK
