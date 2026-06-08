@@ -38,7 +38,7 @@ class ARShooterApp extends StatelessWidget {
 class NetworkService {
   NetworkService._internal();
   static final NetworkService instance = NetworkService._internal();
-  static const String serverUrl = 'http://185.216.71.84:3000';
+  static const String serverUrl = 'http://185.216.71.84:3001';
   IO.Socket? socket;
 
   IO.Socket connect() {
