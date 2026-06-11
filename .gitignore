@@ -1,0 +1,31 @@
+# Flutter
+client/.dart_tool/
+client/.packages
+client/build/
+client/.flutter-plugins
+client/.flutter-plugins-dependencies
+client/pubspec.lock
+client/.metadata
+client/android/.gradle/
+client/android/local.properties
+client/android/app/src/main/java/io/
+client/ios/Pods/
+client/ios/.symlinks/
+client/ios/Flutter/flutter_export_environment.sh
+client/ios/Flutter/Generated.xcconfig
+client/ios/Flutter/ephemeral/
+
+# Server
+server/node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups
+_backup_*
